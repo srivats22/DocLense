@@ -1,0 +1,73 @@
+{
+  "name": "doclense",
+  "displayName": "Doc Lense",
+  "description": "Quickly Jump to docs based on project dependencies",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/srivatsvenkataraman/doclense.git"
+  },
+  "icon": "assets/logo.png",
+  "version": "0.1.0",
+  "publisher": "Srivats",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "documentation",
+    "docs",
+    "dependencies",
+    "quick access"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "doclense-sidebar",
+          "title": "Doc Lense",
+          "icon": "assets/logo.png"
+        }
+      ]
+    },
+    "views": {
+      "doclense-sidebar": [
+        {
+          "type": "webview",
+          "id": "doclense-sidebar-view",
+          "name": "Doc Lense",
+          "icon": "assets/logo.png"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.106.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "eslint": "^9.32.0",
+    "typescript": "^5.9.2",
+    "ts-loader": "^9.5.2",
+    "webpack": "^5.101.0",
+    "webpack-cli": "^6.0.1",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
