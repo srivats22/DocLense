@@ -1,9 +1,12 @@
-name: Test Build (Dry Run)
+name: Deploy
 on:
-  workflow_dispatch: # This allows you to click a button to run it manually
+  workflow_dispatch: 
+  push:
+    tags:
+      - 'v*'
 
 jobs:
-  test-on-pi:
+  deploy:
     runs-on: self-hosted
     steps:
       - name: 1. Pull Latest Code
@@ -12,14 +15,23 @@ jobs:
       - name: 2. Install Dependencies
         run: npm install
 
-      - name: 3. Verify Package Build
-        # This creates the .vsix file but DOES NOT upload it
+      - name: 3. Build Extension Package
+        # This generates a file like: name-version.vsix
         run: vsce package
-        
-      - name: 4. List Files (Verification)
-        run: ls -lh *.vsix
 
-      - name: 5. Cleanup Workspace
+      - name: 4. Publish to VS Marketplace
+        # We tell it to publish the .vsix file we just made
+        run: vsce publish -p ${{ secrets.DEPLOYMENT_KEY }} --packagePath $(ls *.vsix)
+        env:
+          VSCE_PAT: ${{ secrets.DEPLOYMENT_KEY }}
+
+      - name: 5. Publish to Open-VSX
+        # Note the change to OVSX_PAT environment variable
+        run: ovsx publish -p ${{ secrets.openvsx_token }} $(ls *.vsix)
+        env:
+          OVSX_PAT: ${{ secrets.openvsx_token }}
+
+      - name: 6. Cleanup Workspace
         if: always()
         run: |
           echo "Cleaning up build files..."
