@@ -66,35 +66,54 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     console.log('[DocLense] 🔄 Starting background refresh...');
     webviewView.webview.postMessage({ type: "loading", value: true });
 
-    const fresh = await this.computeDependencies();
+    try {
+      const freshResult = await this.computeDependencies();
 
-    // 3️⃣ Update only if changed
-    if (!this.isSameDeps(cached, fresh)) {
-      console.log(`[DocLense] 🆕 Dependencies changed: updating cache with ${fresh.length} dependencies`);
-      this.allDependencies = fresh;
-      this.context.workspaceState.update(cacheKey, fresh);
+      if (!freshResult.isNpm) {
+        webviewView.webview.postMessage({
+          type: "error",
+          message: "No package.json found. DocLense works with npm-based projects."
+        });
+      } else {
+        // 3️⃣ Update only if changed
+        if (!this.isSameDeps(cached, freshResult.deps)) {
+          console.log(`[DocLense] 🆕 Dependencies changed: updating cache with ${freshResult.deps.length} dependencies`);
+          this.allDependencies = freshResult.deps;
+          this.context.workspaceState.update(cacheKey, freshResult.deps);
 
+          webviewView.webview.postMessage({
+            type: "dependencies",
+            data: freshResult.deps
+          });
+        } else {
+          console.log('[DocLense] ✓ Dependencies unchanged: cache is up to date');
+        }
+      }
+    } catch (err) {
+      console.error('[DocLense] Error computing dependencies:', err);
       webviewView.webview.postMessage({
-        type: "dependencies",
-        data: fresh
+        type: "error",
+        message: "Failed to scan dependencies."
       });
-    } else {
-      console.log('[DocLense] ✓ Dependencies unchanged: cache is up to date');
     }
 
     webviewView.webview.postMessage({ type: "loading", value: false });
   }
 
-  private async computeDependencies(): Promise<Dependency[]> {
+  private async computeDependencies(): Promise<{ deps: Dependency[], isNpm: boolean }> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     if (!workspaceFolder) {
       console.log('[DocLense] ⚠️ No workspace folder found');
-      return [];
+      return { deps: [], isNpm: false };
     }
 
     console.log(`[DocLense] 📂 Scanning workspace: ${workspaceFolder.fsPath}`);
     const pkgFiles = await findPackageJsonFiles(workspaceFolder);
     console.log(`[DocLense] 📦 Found ${pkgFiles.length} package.json file(s)`);
+
+    if (pkgFiles.length === 0) {
+      return { deps: [], isNpm: false };
+    }
 
     const depSet = new Set<string>();
 
@@ -106,14 +125,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     const depNames = [...depSet];
     console.log(`[DocLense] 📊 Total unique dependencies: ${depNames.length}`);
-    console.log(`[DocLense] 🌐 Fetching documentation URLs...`);
 
+    if (depNames.length === 0) {
+      return { deps: [], isNpm: true };
+    }
+
+    console.log(`[DocLense] 🌐 Fetching documentation URLs...`);
     const urlMap = await getDocumentationUrlsBatch(depNames, 10);
 
-    return depNames.map(name => ({
+    const deps = depNames.map(name => ({
       name,
       url: urlMap.get(name) || `https://www.npmjs.com/package/${name}`
     }));
+
+    return { deps, isNpm: true };
   }
 
   /* -------------------- HELPERS -------------------- */
@@ -247,8 +272,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           background: var(--vscode-editor-background);
           color: var(--vscode-editor-foreground);
           font-family: var(--vscode-font-family);
-          padding: 16px;
+          padding: 12px;
           box-sizing: border-box;
+        }
+
+        h5 { margin: 0; }
+        p.small { margin: 2px 0 12px 0; opacity: 0.7; }
+
+        .field {
+          margin-bottom: 8px !important;
+          background: var(--vscode-editor-background);
+        }
+
+        .field.small {
+          height: 36px !important;
+          min-height: 36px !important;
+        }
+
+        .field i {
+          font-size: 18px !important;
         }
 
         .dep-item {
@@ -299,7 +341,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       <h5>DocLense</h5>
       <p class="small">Instant docs for your dependencies</p>
 
-      <div class="field prefix round fill">
+      <div class="field prefix round fill small">
         <i>search</i>
         <input id="search" placeholder="Search dependencies..." />
       </div>
@@ -311,6 +353,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           <p>Getting Dependencies...</p>
         </div>
 
+        <div id="error-container" style="display: none; padding: 20px; text-align: center;">
+          <i class="extra" style="font-size: 48px; opacity: 0.5; margin-bottom: 16px;">warning</i>
+          <h6 id="error-title">Unsupported Project</h6>
+          <p id="error-message" class="small">This extension only works with npm-based projects containing a package.json file.</p>
+        </div>
+
         <ul id="list" class="list"></ul>
       </div>
 
@@ -318,15 +366,35 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         const vscode = acquireVsCodeApi();
         const list = document.getElementById("list");
         const search = document.getElementById("search");
+        const searchContainer = search.parentElement;
         const loading = document.getElementById("loading");
+        const errorContainer = document.getElementById("error-container");
+        const errorMessage = document.getElementById("error-message");
 
         window.addEventListener("message", e => {
-          if (e.data.type === "dependencies") render(e.data.data);
+          if (e.data.type === "dependencies") {
+            render(e.data.data);
+            errorContainer.style.display = "none";
+            searchContainer.style.display = "flex";
+          }
+
+          if (e.data.type === "error") {
+            loading.style.display = "none";
+            list.style.display = "none";
+            searchContainer.style.display = "none";
+            errorContainer.style.display = "block";
+            if (e.data.message) errorMessage.innerText = e.data.message;
+          }
 
           if (e.data.type === "loading") {
             const isLoading = e.data.value;
             loading.style.display = isLoading ? "flex" : "none";
-            list.style.display = isLoading ? "none" : "block";
+            if (isLoading) {
+              list.style.display = "none";
+              errorContainer.style.display = "none";
+            } else if (errorContainer.style.display !== "block") {
+              list.style.display = "block";
+            }
           }
         });
 
@@ -342,6 +410,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         function render(deps) {
           list.innerHTML = "";
+          if (deps.length === 0 && errorContainer.style.display !== "block") {
+            const li = document.createElement("li");
+            li.style.padding = "20px";
+            li.style.textAlign = "center";
+            li.style.opacity = "0.6";
+            li.innerText = "No dependencies found";
+            list.appendChild(li);
+            return;
+          }
+
           deps.forEach(dep => {
             const li = document.createElement("li");
             li.className = "dep-item";
