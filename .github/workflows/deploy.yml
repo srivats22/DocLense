@@ -1,0 +1,27 @@
+name: Test Build (Dry Run)
+on:
+  workflow_dispatch: # This allows you to click a button to run it manually
+
+jobs:
+  test-on-pi:
+    runs-on: self-hosted
+    steps:
+      - name: 1. Pull Latest Code
+        uses: actions/checkout@v4
+
+      - name: 2. Install Dependencies
+        run: npm install
+
+      - name: 3. Verify Package Build
+        # This creates the .vsix file but DOES NOT upload it
+        run: vsce package
+        
+      - name: 4. List Files (Verification)
+        run: ls -lh *.vsix
+
+      - name: 5. Cleanup Workspace
+        if: always()
+        run: |
+          echo "Cleaning up build files..."
+          rm -rf ./*
+          rm -rf ./.??*
