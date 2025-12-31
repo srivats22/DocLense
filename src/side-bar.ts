@@ -210,7 +210,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             background: #1e1e1e; color: #ccc; font-family: sans-serif;
           }
           .controls {
-            position: fixed; top: 10px; right: 10px; z-index: 100;
+            position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+            z-index: 100;
           }
           button {
             background: #333; color: white; border: 1px solid #555;

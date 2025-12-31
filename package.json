@@ -7,7 +7,7 @@
     "url": "https://github.com/srivatsvenkataraman/doclense.git"
   },
   "icon": "assets/logo.png",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Srivats",
   "engines": {
     "vscode": "^1.100.0"
@@ -22,7 +22,9 @@
     "dependencies",
     "quick access"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
