@@ -19,3 +19,6 @@ stats.json
 
 # Artifacts from running npm install
 **/npm-debug.log
+
+# build artifacts
+*.vsix

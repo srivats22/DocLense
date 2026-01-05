@@ -144,7 +144,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /* -------------------- HELPERS -------------------- */
 
   private filterDependencies(query: string): Dependency[] {
-    if (!query?.trim()) return this.allDependencies;
+    if (!query?.trim()) {
+      return this.allDependencies;
+    }
 
     const q = query.toLowerCase();
     return this.allDependencies.filter(dep =>

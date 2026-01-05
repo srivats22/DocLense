@@ -1,7 +1,7 @@
 {
   "name": "doclense",
   "displayName": "Doc Lense",
-  "description": "Quickly Jump to docs based on project dependencies",
+  "description": "Instant-access documentation for your entire stack.",
   "repository": {
     "type": "git",
     "url": "https://github.com/srivatsvenkataraman/doclense.git"
