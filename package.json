@@ -4,10 +4,10 @@
   "description": "Instant-access documentation for your entire stack.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/srivatsvenkataraman/doclense.git"
+    "url": "https://github.com/srivats22/DocLense"
   },
   "icon": "assets/logo.png",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "Srivats",
   "engines": {
     "vscode": "^1.100.0"
