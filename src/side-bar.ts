@@ -4,6 +4,11 @@ import {
   readDependencies,
   getDocumentationUrlsBatch
 } from "./helper/dependency-finder";
+import {
+  findPubspecFiles,
+  readFlutterDependencies,
+  getFlutterPkgDocUrl
+} from "./helper/flutter-finder";
 
 type Dependency = { name: string; url: string };
 
@@ -69,10 +74,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     try {
       const freshResult = await this.computeDependencies();
 
-      if (!freshResult.isNpm) {
+      if (!freshResult.hasProjects) {
         webviewView.webview.postMessage({
           type: "error",
-          message: "No package.json found. DocLense works with npm-based projects."
+          message: "No package.json or pubspec.yaml found. DocLense works with npm and Flutter projects."
         });
       } else {
         // 3️⃣ Update only if changed
@@ -100,45 +105,73 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     webviewView.webview.postMessage({ type: "loading", value: false });
   }
 
-  private async computeDependencies(): Promise<{ deps: Dependency[], isNpm: boolean }> {
+  private async computeDependencies(): Promise<{ deps: Dependency[], hasProjects: boolean }> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     if (!workspaceFolder) {
       console.log('[DocLense] ⚠️ No workspace folder found');
-      return { deps: [], isNpm: false };
+      return { deps: [], hasProjects: false };
     }
 
     console.log(`[DocLense] 📂 Scanning workspace: ${workspaceFolder.fsPath}`);
-    const pkgFiles = await findPackageJsonFiles(workspaceFolder);
-    console.log(`[DocLense] 📦 Found ${pkgFiles.length} package.json file(s)`);
 
-    if (pkgFiles.length === 0) {
-      return { deps: [], isNpm: false };
+    // 1️⃣ Find project files
+    const [pkgFiles, pubspecFiles] = await Promise.all([
+      findPackageJsonFiles(workspaceFolder),
+      findPubspecFiles(workspaceFolder)
+    ]);
+
+    console.log(`[DocLense] 📦 Found ${pkgFiles.length} package.json and ${pubspecFiles.length} pubspec.yaml file(s)`);
+
+    if (pkgFiles.length === 0 && pubspecFiles.length === 0) {
+      return { deps: [], hasProjects: false };
     }
 
-    const depSet = new Set<string>();
+    const npmDepSet = new Set<string>();
+    const flutterDepSet = new Set<string>();
 
+    // 2️⃣ Read npm dependencies
     for (const pkg of pkgFiles) {
       const info = await readDependencies(pkg);
-      console.log(`[DocLense]   → ${info.path}: ${info.deps.length} dependencies`);
-      info.deps.forEach(dep => depSet.add(dep));
+      info.deps.forEach(dep => npmDepSet.add(dep));
     }
 
-    const depNames = [...depSet];
-    console.log(`[DocLense] 📊 Total unique dependencies: ${depNames.length}`);
-
-    if (depNames.length === 0) {
-      return { deps: [], isNpm: true };
+    // 3️⃣ Read flutter dependencies
+    for (const pubspec of pubspecFiles) {
+      const deps = await readFlutterDependencies(pubspec).catch(() => []);
+      deps.forEach(dep => flutterDepSet.add(dep));
     }
 
-    console.log(`[DocLense] 🌐 Fetching documentation URLs...`);
-    const urlMap = await getDocumentationUrlsBatch(depNames, 10);
+    const npmDepNames = [...npmDepSet];
+    const flutterDepNames = [...flutterDepSet];
 
-    const deps = depNames.map(name => ({
-      name,
-      url: urlMap.get(name) || `https://www.npmjs.com/package/${name}`
-    }));
+    console.log(`[DocLense] 📊 Total unique: ${npmDepNames.length} npm, ${flutterDepNames.length} flutter`);
 
-    return { deps, isNpm: true };
+    // 4️⃣ Fetch documentation URLs
+    const [npmUrlMap, flutterUrlMap] = await Promise.all([
+      getDocumentationUrlsBatch(npmDepNames, 10),
+      // For Flutter, we'll fetch in parallel
+      Promise.all(flutterDepNames.map(async name => {
+        const url = await getFlutterPkgDocUrl(name);
+        return [name, url] as [string, string];
+      })).then(entries => new Map<string, string>(entries))
+    ]);
+
+    // 5️⃣ Combine results
+    const deps: Dependency[] = [
+      ...npmDepNames.map(name => ({
+        name,
+        url: npmUrlMap.get(name) || `https://www.npmjs.com/package/${name}`
+      })),
+      ...flutterDepNames.map(name => ({
+        name,
+        url: flutterUrlMap.get(name) || `https://pub.dev/packages/${name}`
+      }))
+    ];
+
+    // Sort alphabetically
+    deps.sort((a, b) => a.name.localeCompare(b.name));
+
+    return { deps, hasProjects: true };
   }
 
   /* -------------------- HELPERS -------------------- */
@@ -167,19 +200,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   /* -------------------- DOC VIEWER -------------------- */
 
   private async openInWebviewPanel(url: string) {
-    // 1. Pre-flight check: See if the site explicitly blocks embedding
     try {
       const response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(2000) });
       const xFrame = response.headers.get('x-frame-options')?.toLowerCase();
       const csp = response.headers.get('content-security-policy')?.toLowerCase();
 
       if (xFrame === 'deny' || xFrame === 'sameorigin' || csp?.includes("frame-ancestors 'none'")) {
-        console.log(`[DocLense] Embedding blocked by headers for ${url}. Opening externally.`);
         vscode.env.openExternal(vscode.Uri.parse(url));
         return;
       }
     } catch (e) {
-      // If HEAD request fails or times out, proceed to webview as fallback
       console.log(`[DocLense] Pre-flight check failed for ${url}, trying webview.`);
     }
 
@@ -359,7 +389,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         <div id="error-container" style="display: none; padding: 20px; text-align: center;">
           <i class="extra" style="font-size: 48px; opacity: 0.5; margin-bottom: 16px;">warning</i>
           <h6 id="error-title">Unsupported Project</h6>
-          <p id="error-message" class="small">This extension only works with npm-based projects containing a package.json file.</p>
+          <p id="error-message" class="small">This extension works with npm or Flutter projects containing a package.json or pubspec.yaml file.</p>
         </div>
 
         <ul id="list" class="list"></ul>
@@ -438,6 +468,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       </script>
     </body>
     </html>
-  `;
+    `;
   }
 }
