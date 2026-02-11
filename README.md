@@ -13,7 +13,7 @@ DocLense is a VS Code extension that
 
 ## Note
 
-> DocLense currently supports only npm based projects. Other languages and frameworks will be supported in future releases.
+> DocLense currently supports only npm and Flutter based projects. Other languages and frameworks will be supported in future releases.
 
 
 ## Changelog
